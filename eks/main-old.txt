@@ -7,28 +7,32 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
-  profile = var.aws_profile
-  allowed_account_ids = var.aws_account_id
+ region = var.aws_region
+ profile = var.aws_profile
+ allowed_account_ids = var.aws_account_id
+}
+
+locals {
+  cluster_name = "temzy-cluster"
 }
 
 data "aws_eks_cluster" "eks" {
-  name = local.cluster_name
+  name = module.eks.cluster_id
+}
+
+data "aws_eks_cluster_auth" "eks" {
+  name = module.eks.cluster_id
 }
 
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.eks.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
-  token                  = data.aws_eks_cluster.eks.token
-}
-
-locals {
-  cluster_name = "temzy-cluster"
-  ecr_repository_name = "your-ecr-repo-name"  # Replace with your ECR repository name
+  token                  = data.aws_eks_cluster_auth.eks.token
 }
 
 module "eks" {
   source          = "terraform-aws-modules/eks/aws"
+  # version         = "17.20.0"
   version         = "17.10.0"
   cluster_version = "1.26"
   cluster_name    = local.cluster_name
@@ -53,52 +57,17 @@ module "eks" {
       }
     }
   }
-}
 
+}
 resource "aws_eks_addon" "kube-proxy" {
   cluster_name      = local.cluster_name
   addon_name        = "kube-proxy"
 }
-
 resource "aws_eks_addon" "vpc-cni" {
   cluster_name      = local.cluster_name
   addon_name        = "vpc-cni"
 }
-
 resource "aws_eks_addon" "coredns" {
   cluster_name      = local.cluster_name
   addon_name        = "coredns"
-}
-
-resource "aws_iam_policy" "eks_node_ecr_policy" {
-  name        = "eks-node-ecr-policy"
-  description = "Allows EKS nodes to pull images from the specified ECR repository"
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action = [
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:GetAuthorizationToken",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetManifest",
-          "ecr:GetRepositoryPolicy",
-          "ecr:DescribeRepositories",
-          "ecr:ListImages",
-        ],
-        Effect = "Allow",
-        Resource = "arn:aws:ecr:us-east-1:326355388919:repository/temzy-ecr"  # Use the ARN of your ECR repository
-      }
-    ]
-  })
-}
-
-
-resource "aws_iam_role_policy_attachment" "eks_node_ecr_attachment" {
-  policy_arn = aws_iam_policy.eks_node_ecr_policy.arn
-  role       = module.eks.worker_groups["node-group-1"].eks_worker_node_group_node_role_name
-}
-
-resource "aws_ecr_repository" "ecr_repo" {
-  name = local.ecr_repository_name
 }
