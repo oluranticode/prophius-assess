@@ -102,3 +102,30 @@ resource "aws_iam_role_policy_attachment" "eks_node_ecr_attachment" {
 resource "aws_ecr_repository" "ecr_repo" {
   name = local.ecr_repository_name
 }
+
+# Kubernetes Secret for ECR Registry Credentials
+resource "kubernetes_secret" "ecr_credentials" {
+  metadata  {
+    name = "ecr-credentials"
+  }
+
+  data = {
+     dockercfg = base64encode(jsonencode({
+      "https://<account_id>.dkr.ecr.<region>.amazonaws.com" = {
+        username = "AWS", #Replace account username
+        password = "your-ecr-access-key",  # Replace with your ECR access key
+        email = "none"
+        auth = "your-ecr-secret-key"  # Replace with your ECR secret key
+      }
+    }))
+  }
+}
+
+# Kubernetes Secret - Deploy it to your EKS Cluster
+resource "kubernetes_secret" "ecr_credentials" {
+  metadata {
+    name = "ecr-credentials"
+    namespace = "default" # Replace with your desired namespace
+  }
+  data = kubernetes_secret.ecr_credentials.data
+}
